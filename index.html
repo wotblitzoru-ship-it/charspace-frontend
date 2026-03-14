@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>AI Characters</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+/* --- СТИЛИ --- */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: var(--tg-theme-bg-color, #1a1a1a); color: var(--tg-theme-text-color, #ffffff); height: 100vh; overflow: hidden; }
+
+.header { display: flex; align-items: center; justify-content: space-between; padding: 15px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); position: sticky; top: 0; z-index: 100; flex-shrink: 0; }
+.header-title { font-size: 20px; font-weight: bold; }
+
+.spicy-toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.toggle-switch { width: 44px; height: 24px; background: rgba(255,255,255,0.3); border-radius: 12px; position: relative; transition: background 0.3s; }
+.toggle-switch.active { background: #ff6b6b; }
+.toggle-knob { width: 20px; height: 20px; background: white; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: transform 0.3s; }
+.toggle-switch.active .toggle-knob { transform: translateX(20px); }
+
+.main-container { flex: 1; overflow-y: auto; padding-bottom: 90px; height: calc(100vh - 60px); }
+.screen { display: none; padding: 20px; min-height: 100%; animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.screen.active { display: block; }
+
+.filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+.filter-tag { background: var(--tg-theme-secondary-bg-color, #2d2d2d); padding: 8px 15px; border-radius: 20px; font-size: 14px; cursor: pointer; transition: background 0.3s; }
+.filter-tag.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+
+.character-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+.character-card { background: var(--tg-theme-secondary-bg-color, #2d2d2d); border-radius: 15px; overflow: hidden; cursor: pointer; transition: transform 0.2s; position: relative; }
+.character-card:active { transform: scale(0.97); }
+.character-avatar { width: 100%; height: 150px; object-fit: cover; display: block; }
+.character-avatar.error { background: #333; display: flex; align-items: center; justify-content: center; color: #777; font-size: 40px; }
+.character-info { padding: 12px; }
+.character-name-age { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
+.character-name { font-weight: bold; font-size: 16px; }
+.character-age { font-size: 14px; opacity: 0.7; }
+.character-desc { font-size: 12px; opacity: 0.8; margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.character-tags { display: flex; gap: 5px; flex-wrap: wrap; }
+.tag { font-size: 10px; padding: 3px 8px; background: rgba(102, 126, 234, 0.2); border-radius: 8px; }
+
+.chat-list { display: flex; flex-direction: column; gap: 15px; }
+.chat-item { display: flex; align-items: center; gap: 15px; padding: 15px; background: var(--tg-theme-secondary-bg-color, #2d2d2d); border-radius: 15px; cursor: pointer; transition: opacity 0.2s; }
+.chat-item:active { opacity: 0.8; }
+.chat-avatar { width: 50px; height: 50px; border-radius: 50%; object-fit: cover; }
+
+.detail-hero { width: 100%; height: 300px; object-fit: cover; border-radius: 0 0 20px 20px; display: block; background: #222; }
+.detail-content { padding: 20px; margin-top: -40px; position: relative; z-index: 5; }
+
+.message-bubble { max-width: 85%; padding: 10px 14px; border-radius: 20px; margin-bottom: 15px; line-height: 1.5; word-wrap: break-word; font-size: 14px; }
+.message-bubble.user { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; margin-left: auto; border-bottom-right-radius: 5px; }
+.message-bubble.ai { background: var(--tg-theme-secondary-bg-color, #2d2d2d); color: var(--tg-theme-text-color, #ffffff); margin-right: auto; border-bottom-left-radius: 5px; }
+.action-text { color: #a0a0a0; font-style: italic; opacity: 0.8; }
+
+.continue-btn {
+    background: rgba(102, 126, 234, 0.15); color: #667eea; border: none; padding: 8px 16px;
+    border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; align-self: center;
+    margin-bottom: 10px; transition: background 0.2s;
+}
+.continue-btn:active { background: rgba(102, 126, 234, 0.3); }
+
+/* --- ИСПРАВЛЕННЫЕ СТИЛИ ДЛЯ ЧАТА И НАВИГАЦИИ --- */
+
+/* Нижняя панель навигации */
+.bottom-nav { 
+    position: fixed; 
+    bottom: 0; 
+    left: 0; 
+    right: 0; 
+    height: 70px; 
+    display: flex; 
+    justify-content: space-around; 
+    align-items: center; 
+    padding-bottom: 10px; 
+    background: var(--tg-theme-secondary-bg-color, #2d2d2d); 
+    border-top: 1px solid rgba(255,255,255,0.1); 
+    z-index: 1000; 
+}
+.nav-item { display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer; color: var(--tg-theme-hint-color, #888); transition: color 0.3s; width: 60px; }
+.nav-item.active { color: #667eea; }
+.nav-icon { font-size: 24px; }
+.nav-label { font-size: 11px; text-align: center; }
+
+/* Интерфейс чата - теперь с отступом снизу! */
+.chat-interface {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 70px; /* Отступ равен высоте .bottom-nav */
+    background: var(--tg-theme-bg-color, #1c1c1e);
+    z-index: 300;
+    display: none; /* Скрыт по умолчанию */
+    flex-direction: column;
+}
+
+/* Область ввода прижата к низу интерфейса чата */
+.input-area {
+    padding: 10px 15px;
+    background: var(--tg-theme-secondary-bg-color, #2c2c2e);
+    border-top: 1px solid #38383a;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.chat-header {
+    display: flex;
+    align-items: center;
+    padding: 10px 15px;
+    background: var(--tg-theme-secondary-bg-color, #2c2c2e);
+    border-bottom: 1px solid #38383a;
+    flex-shrink: 0;
+}
+
+.back-btn { cursor: pointer; font-size: 24px; margin-right: 10px; color: var(--tg-theme-button-color, #0a84ff); }
+
+#messagesContainer {
+    flex: 1;
+    overflow-y: auto;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+/* Остальные стили */
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 2000; display: none; align-items: flex-end; justify-content: center; backdrop-filter: blur(3px); }
+.modal-overlay.active { display: flex; }
+.modal { background: var(--tg-theme-secondary-bg-color, #2d2d2d); border-radius: 20px 20px 0 0; padding: 0; width: 100%; max-width: 500px; max-height: 90vh; overflow-y: auto; box-shadow: 0 -10px 30px rgba(0,0,0,0.5); position: relative; animation: slideUp 0.3s ease; }
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+.close-btn {
+    position: absolute; top: 15px; right: 15px; width: 32px; height: 32px;
+    background: rgba(0,0,0,0.6); border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; cursor: pointer; z-index: 10; color: white;
+    font-size: 20px; font-weight: bold; backdrop-filter: blur(4px); transition: background 0.2s;
+}
+.close-btn:active { background: rgba(0,0,0,0.8); }
+
+.loading { text-align: center; padding: 40px; opacity: 0.6; }
+.search-bar { margin: 20px 0; }
+.search-input { width: 100%; padding: 12px 20px; border: none; border-radius: 25px; background: var(--tg-theme-secondary-bg-color, #2d2d2d); color: inherit; outline: none; }
+.setting-option { display: flex; align-items: center; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 12px; margin-bottom: 10px; cursor: pointer; }
+.setting-option.selected { background: rgba(102, 126, 234, 0.2); }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header" id="main-header">
+    <div class="header-title">Charspace AI</div>
+    <div class="spicy-toggle" onclick="toggleSpicy()">
+        <span>SPICY 🌶️</span>
+        <div class="toggle-switch" id="spicyToggle"><div class="toggle-knob"></div></div>
+    </div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="main-container" id="main-container">
+    <!-- HOME SCREEN -->
+    <div class="screen active" id="home-screen">
+        <input type="text" class="search-input search-bar" placeholder="Поиск персонажей..." id="searchInput" oninput="filterCharacters()">
+        <div class="filters" id="categoryFilters">
+            <div class="filter-tag active" onclick="filterByCategory('all')">Все</div>
+            <div class="filter-tag" onclick="filterByCategory('Девушка')">Девушки</div>
+            <div class="filter-tag" onclick="filterByCategory('Парень')">Парни</div>
+            <div class="filter-tag" onclick="filterByCategory('Аниме')">Аниме</div>
+            <div class="filter-tag" onclick="filterByCategory('OC')">OC</div>
+        </div>
+        <div class="loading" id="homeLoading">Загрузка...</div>
+        <div class="character-grid" id="characterGrid"></div>
+    </div>
+
+    <!-- CHATS SCREEN -->
+    <div class="screen" id="chats-screen">
+        <h2 style="margin-bottom: 15px; font-size: 22px;">Чаты</h2>
+        <div class="loading" id="chatsLoading">Загрузка...</div>
+        <div class="chat-list" id="chatList"></div>
+    </div>
+
+    <!-- PROFILE SCREEN -->
+    <div class="screen" id="profile-screen">
+        <div class="profile-header" style="text-align: center; padding: 30px 0;">
+            <img id="userAvatarImg" src="" alt="" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin: 0 auto 15px; display: none; border: 2px solid var(--tg-theme-button-color, #667eea);">
+            <div id="userAvatarPlaceholder" style="width: 100px; height: 100px; background: linear-gradient(135deg, #0a84ff, #5ac8fa); border-radius: 50%; margin: 0 auto 15px; display: flex; align-items: center; justify-content: center; font-size: 40px; font-weight: bold; color: white; text-transform: uppercase;"></div>
+            <div id="userNameDisplay" style="font-size: 22px; font-weight: 700; margin-bottom: 5px;">Загрузка...</div>
+            <div style="font-size: 14px; color: var(--tg-theme-hint-color, #888);">ID: <span id="userIdDisplay">...</span></div>
+        </div>
+        <div class="menu-list" style="display: flex; flex-direction: column; gap: 10px;">
+            <div class="setting-option" onclick="showScreen('chats-screen')">💬 Мои чаты</div>
+            <div class="setting-option" onclick="alert('Пусто')">⭐ Избранное</div>
+        </div>
+    </div>
+</div>
+
+<!-- CHARACTER DETAIL MODAL -->
+<div class="modal-overlay" id="characterDetailModal">
+    <div class="modal">
+        <div class="close-btn" onclick="closeCharacterDetail()">&times;</div>
+        <img id="detailAvatar" class="detail-hero" src="" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+        <div style="display:none; width:100%; height:300px; background:#333; align-items:center; justify-content:center; color:#777; font-size:50px;" id="detailAvatarError">🖼️</div>
+        <div class="detail-content">
+            <div style="font-size: 28px; font-weight: 800; margin-bottom: 5px;"><span id="detailName">Имя</span>, <span id="detailAge">25</span></div>
+            <div style="display: flex; gap: 6px; margin: 10px 0; flex-wrap: wrap;" id="detailTags"></div>
+            <p style="color: var(--tg-theme-hint-color, #888); line-height: 1.5;" id="detailDescription"></p>
+            <button class="btn-start" style="width: 100%; padding: 14px; background: var(--tg-theme-button-color, #0a84ff); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; margin-top: 20px; cursor: pointer;" onclick="startChat()">Начать чат</button>
+        </div>
+    </div>
+</div>
+
+<!-- CHAT INTERFACE -->
+<div class="chat-interface" id="chatInterface">
+    <div class="chat-header">
+        <div class="back-btn" onclick="closeChat()">&larr;</div>
+        <img id="chatHeaderAvatar" style="width: 35px; height: 35px; border-radius: 50%; margin-right: 10px;" src="" alt="">
+        <div style="flex: 1;">
+            <div style="font-weight: 600; font-size: 16px;" id="chatHeaderName">Имя</div>
+            <div style="font-size: 12px; color: var(--tg-theme-hint-color, #8e8e93);">Онлайн</div>
+        </div>
+        <div style="font-size: 20px; color: var(--tg-theme-hint-color, #8e8e93);" onclick="alert('Настройки')">⚙️</div>
+    </div>
+
+    <div id="messagesContainer">
+        <div class="loading">Загрузка...</div>
+    </div>
+
+    <div class="input-area">
+        <button class="continue-btn" onclick="continueDialog()">▶ Продолжить диалог</button>
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="font-size: 24px; color: var(--tg-theme-hint-color, #8e8e93); cursor: pointer;">📎</div>
+            <input type="text" id="chatInput" placeholder="Введите сообщение..." style="flex: 1; background: #1c1c1e; border: 1px solid #38383a; border-radius: 20px; padding: 10px 15px; color: white; font-size: 16px; outline: none;" onkeypress="if(event.key==='Enter')sendChatMessage()">
+            <button onclick="sendChatMessage()" style="width: 35px; height: 35px; background: var(--tg-theme-button-color, #0a84ff); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; cursor: pointer; border: none;">➤</button>
+        </div>
+    </div>
+</div>
+
+<!-- BOTTOM NAVIGATION -->
+<div class="bottom-nav" id="bottomNav">
+    <div class="nav-item active" onclick="showScreen('home-screen', this)">
+        <div class="nav-icon">🏠</div>
+        <div>Главная</div>
+    </div>
+    <div class="nav-item" onclick="showScreen('chats-screen', this)">
+        <div class="nav-icon">💬</div>
+        <div>Чаты</div>
+    </div>
+    <div class="nav-item" onclick="showScreen('profile-screen', this)">
+        <div class="nav-icon">👤</div>
+        <div>Профиль</div>
+    </div>
+</div>
+
+<script>
+// --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
+let currentCharacter = null;
+let isSpicy = false;
+let chatMode = 'simple';
+let responseLength = 'medium';
+let pendingCharacter = null;
+
+const tg = window.Telegram.WebApp;
+tg.ready();
+tg.expand();
+
+const user = tg.initDataUnsafe.user;
+const userId = user ? user.id.toString() : 'guest_user';
+const userFirstName = user ? user.first_name : 'Гость';
+const userPhotoUrl = user ? user.photo_url : null;
+
+// ИСПРАВЛЕНО: Убраны лишние пробелы в конце ссылки
+// Автоматическое определение адреса
+let apiBase;
+
+// Получаем хост из URL, где запущен сайт (Netlify)
+const currentHost = window.location.hostname;
+
+// Если мы на Netlify (или любом другом домене), стучимся на ApexNodes
+// ПРОВЕРЬ: работает ли доступ по HTTP?
+apiBase = 'https://comfy-caramel-6341db.netlify.app/'; 
+
+// Раскомментируй строку ниже, если хочешь попробовать HTTPS (часто не работает на прямых портах)
+// apiBase = 'https://c-pl-1.apexnodes.xyz:10478/api';
+
+console.log("API Address:", apiBase); // Для отладки в консоли
+
+const DEFAULT_CHARACTERS = [
+    { "id": 1, "name": "Алиса", "age": 22, "description": "Дружелюбная помощница из киберпанк-мира", "prompt": "Ты Алиса. Описывай действия в *звездочках*.", "avatar": "alisa.jpg", "categories": ["Девушка", "Sci-Fi"], "is_spicy": false, "isCustom": false },
+    { "id": 2, "name": "Рейджин", "age": 28, "description": "Суровый воин из аниме вселенной", "prompt": "Ты Рейджин. Описывай действия в *звездочках*.", "avatar": "rage.jpg", "categories": ["Парень", "Аниме"], "is_spicy": false, "isCustom": false },
+    { "id": 3, "name": "Луна", "age": 150, "description": "Загадочная волшебница", "prompt": "Ты Луна. Описывай действия в *звездочках*.", "avatar": "luna.jpg", "categories": ["Девушка", "Фэнтези"], "is_spicy": false, "isCustom": false },
+    { "id": 4, "name": "Макима", "age": 25, "description": "Властная глава Публичной охранной службы", "prompt": "Ты Макима. Описывай действия в *звездочках*.", "avatar": "makima.jpg", "categories": ["Девушка", "Аниме"], "is_spicy": false, "isCustom": false }
+];
+
+function getAvatarUrl(char) { return char.avatar; }
+
+async function loadCharacters() {
+    try {
+        const res = await fetch(`${apiBase}/characters?spicy=${isSpicy}`);
+        const data = await res.json();
+        const characters = data.length > 0 ? data : DEFAULT_CHARACTERS;
+        renderCharacters(characters);
+    } catch (e) {
+        console.error("Ошибка загрузки:", e);
+        renderCharacters(DEFAULT_CHARACTERS);
+    }
+    document.getElementById('homeLoading').style.display = 'none';
+}
+
+function renderCharacters(characters) {
+    const container = document.getElementById('characterGrid');
+    container.innerHTML = '';
+    characters.forEach(c => {
+        const card = document.createElement('div');
+        card.className = 'character-card';
+        card.onclick = () => openCharacterDetail(c);
+        const av = getAvatarUrl(c);
+        card.innerHTML = `
+            <img class="character-avatar" src="${av}" alt="${c.name}" onerror="this.classList.add('error'); this.src=''; this.alt='🖼️';">
+            <div class="character-info">
+                <div class="character-name-age"><span class="character-name">${c.name}</span><span class="character-age">${c.age}</span></div>
+                <div class="character-desc">${c.description}</div>
+            </div>`;
+        container.appendChild(card);
+    });
+}
+
+function filterCharacters() {
+    const term = document.getElementById('searchInput').value.toLowerCase();
+    document.querySelectorAll('.character-card').forEach(card => {
+        card.style.display = card.textContent.toLowerCase().includes(term) ? '' : 'none';
+    });
+}
+
+function filterByCategory(cat) {
+    document.querySelectorAll('.filter-tag').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    if(cat === 'all') { loadCharacters(); return; }
+    renderCharacters(DEFAULT_CHARACTERS.filter(c => c.categories.includes(cat)));
+}
+
+function toggleSpicy() {
+    isSpicy = !isSpicy;
+    document.getElementById('spicyToggle').classList.toggle('active', isSpicy);
+    loadCharacters();
+}
+
+function openCharacterDetail(c) {
+    currentCharacter = c;
+    const img = document.getElementById('detailAvatar');
+    const errDiv = document.getElementById('detailAvatarError');
+    img.src = getAvatarUrl(c);
+    img.style.display = 'block';
+    errDiv.style.display = 'none';
+    img.onerror = function() { this.style.display = 'none'; errDiv.style.display = 'flex'; };
+    document.getElementById('detailName').textContent = c.name;
+    document.getElementById('detailAge').textContent = c.age;
+    document.getElementById('detailDescription').textContent = c.description;
+    document.getElementById('detailTags').innerHTML = c.categories.map(t => `<span class="tag">${t}</span>`).join('');
+    document.getElementById('characterDetailModal').classList.add('active');
+    document.getElementById('bottomNav').style.display = 'none';
+    document.getElementById('main-header').style.display = 'none';
+}
+
+function closeCharacterDetail() {
+    document.getElementById('characterDetailModal').classList.remove('active');
+    document.getElementById('bottomNav').style.display = 'flex';
+    document.getElementById('main-header').style.display = 'flex';
+    currentCharacter = null;
+}
+
+function startChat() {
+    pendingCharacter = currentCharacter;
+    closeCharacterDetail();
+    openChatInterface();
+}
+
+function openChatInterface() {
+    const iface = document.getElementById('chatInterface');
+    iface.style.display = 'flex';
+    document.getElementById('chatHeaderAvatar').src = getAvatarUrl(pendingCharacter);
+    document.getElementById('chatHeaderName').textContent = pendingCharacter.name;
+    currentCharacter = pendingCharacter;
+    document.getElementById('messagesContainer').innerHTML = '<div class="loading">Загрузка...</div>';
+    loadChatHistory(currentCharacter.id);
+}
+
+function closeChat() {
+    document.getElementById('chatInterface').style.display = 'none';
+    document.getElementById('bottomNav').style.display = 'flex';
+    document.getElementById('main-header').style.display = 'flex';
+}
+
+async function loadChatHistory(charId) {
+    const container = document.getElementById('messagesContainer');
+    try {
+        const res = await fetch(`${apiBase}/chats/${userId}`);
+        const chats = await res.json();
+        const chat = chats.find(c => c.character_id === charId);
+        if(chat && chat.messages) {
+            renderMessages(JSON.parse(chat.messages));
+            return;
+        }
+    } catch(e) { console.log("Сервер недоступен"); }
+    container.innerHTML = '';
+    addMessageToUI(`Привет! Я ${currentCharacter.name}.`, 'ai');
+}
+
+function renderMessages(msgs) {
+    const container = document.getElementById('messagesContainer');
+    container.innerHTML = '';
+    msgs.forEach(m => { if(m.role !== 'system') addMessageToUI(m.content, m.role, false); });
+    container.scrollTop = container.scrollHeight;
+}
+
+function addMessageToUI(text, role, scroll=true) {
+    const container = document.getElementById('messagesContainer');
+    const row = document.createElement('div');
+    row.style.display = 'flex'; row.style.gap = '10px'; row.style.maxWidth = '85%';
+    if (role === 'user') { row.style.alignSelf = 'flex-end'; row.style.flexDirection = 'row-reverse'; } 
+    else { row.style.alignSelf = 'flex-start'; }
+    
+    let userAv = 'https://via.placeholder.com/35?text=U';
+    if (role === 'user' && userPhotoUrl) userAv = userPhotoUrl;
+    const av = role === 'user' ? userAv : getAvatarUrl(currentCharacter);
+    const formattedText = text.replace(/\*(.*?)\*/g, '<span class="action-text">*$1*</span>');
+    
+    row.innerHTML = `
+        <img style="width: 35px; height: 35px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" src="${av}">
+        <div style="background: ${role === 'user' ? 'var(--tg-theme-button-color, #0a84ff)' : 'var(--tg-theme-secondary-bg-color, #3a3a3c)'}; color: white; padding: 12px 16px; border-radius: 18px; font-size: 15px; line-height: 1.5; ${role === 'user' ? 'border-bottom-right-radius: 4px;' : 'border-bottom-left-radius: 4px;'}">
+            ${formattedText}
+        </div>`;
+    container.appendChild(row);
+    if(scroll) container.scrollTop = container.scrollHeight;
+}
+
+async function continueDialog() {
+    const btn = document.querySelector('.continue-btn');
+    const originalText = btn.innerText;
+    btn.innerText = 'Думаю...'; btn.disabled = true;
+    try {
+        let history = [];
+        const stored = localStorage.getItem(`chat_${userId}_${currentCharacter.id}`);
+        if(stored) history = JSON.parse(stored);
+        const req = { user_id: userId, character_id: currentCharacter.id, message: "[Продолжи]", chat_mode: chatMode, response_length: responseLength, history: [{role:'system', content: `${currentCharacter.prompt} Продолжи историю естественно.`}, ...history.slice(-10)] };
+        const res = await fetch(`${apiBase}/chat`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(req) });
+        const data = await res.json();
+        addMessageToUI(data.response, 'assistant');
+        history.push({role:'user', content: "[Продолжение]"}, {role:'assistant', content: data.response});
+        localStorage.setItem(`chat_${userId}_${currentCharacter.id}`, JSON.stringify(history));
+    } catch(e) { alert('Ошибка сети'); }
+    finally { btn.innerText = originalText; btn.disabled = false; }
+}
+
+async function sendChatMessage() {
+    const input = document.getElementById('chatInput');
+    const msg = input.value.trim();
+    if(!msg) return;
+    addMessageToUI(msg, 'user');
+    input.value = '';
+    const loadingId = 'loading-' + Date.now();
+    const container = document.getElementById('messagesContainer');
+    const loadRow = document.createElement('div');
+    loadRow.style.cssText = "display:flex; gap:10px; align-self:flex-start; max-width:85%;";
+    loadRow.id = loadingId;
+    loadRow.innerHTML = `<img style="width:35px;height:35px;border-radius:50%;object-fit:cover;" src="${getAvatarUrl(currentCharacter)}"><div style="background:#3a3a3c;color:white;padding:12px 16px;border-radius:18px;font-size:15px;">...</div>`;
+    container.appendChild(loadRow);
+    container.scrollTop = container.scrollHeight;
+    try {
+        const req = { user_id: userId, character_id: currentCharacter.id, message: msg, chat_mode: chatMode, response_length: responseLength, history: [{role:'system', content: `${currentCharacter.prompt} Пиши кратко.`}] };
+        const res = await fetch(`${apiBase}/chat`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(req) });
+        const data = await res.json();
+        document.getElementById(loadingId).remove();
+        addMessageToUI(data.response, 'assistant');
+    } catch(e) { document.getElementById(loadingId).querySelector('div').textContent = '❌ Ошибка сети'; }
+}
+
+function showScreen(id, el) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    if(el) el.classList.add('active');
+    if(id === 'home-screen') loadCharacters();
+    if(id === 'chats-screen') loadChatsList();
+    document.getElementById('bottomNav').style.display = 'flex';
+    document.getElementById('main-header').style.display = 'flex';
+}
+
+async function loadChatsList() {
+    const container = document.getElementById('chatList');
+    container.innerHTML = '<div class="loading">Загрузка...</div>';
+    setTimeout(() => { container.innerHTML = '<div style="text-align:center; color: #888; padding: 20px;">История чатов загружается с сервера...</div>'; }, 500);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const nameDisplay = document.getElementById('userNameDisplay');
+    const idDisplay = document.getElementById('userIdDisplay');
+    const avatarImg = document.getElementById('userAvatarImg');
+    const avatarPlaceholder = document.getElementById('userAvatarPlaceholder');
+    if (user) {
+        nameDisplay.textContent = userFirstName;
+        idDisplay.textContent = userId;
+        if (userPhotoUrl) {
+            avatarImg.src = userPhotoUrl;
+            avatarImg.style.display = 'block';
+            avatarPlaceholder.style.display = 'none';
+        } else {
+            avatarPlaceholder.textContent = userFirstName.charAt(0).toUpperCase();
+            avatarPlaceholder.style.display = 'flex';
+        }
+    } else {
+        nameDisplay.textContent = 'Гость'; idDisplay.textContent = 'guest_user';
+        avatarPlaceholder.textContent = 'G'; avatarPlaceholder.style.display = 'flex';
+    }
+    loadCharacters();
+});
+</script>
+</body>
+</html>
